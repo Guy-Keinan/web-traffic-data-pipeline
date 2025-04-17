@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    networks:
+      - airflow_net
+
+  airflow-webserver:
+    image: apache/airflow:2.8.1
+    container_name: airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=YOUR_KEY
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__WEBSERVER__SECRET_KEY=YOUR_KEY
+      - _PIP_ADDITIONAL_REQUIREMENTS=psycopg2-binary boto3 pandas s3fs
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./python/scripts:/opt/airflow/python/scripts
+      - ./airflow/logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      bash -c "airflow db migrate &&
+               airflow users create --username airflow --firstname Air --lastname Flow --role Admin --email airflow@example.com --password airflow &&
+               airflow webserver"
+    networks:
+      - airflow_net
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.1
+    container_name: airflow-scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=YOUR_KEY
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__WEBSERVER__SECRET_KEY=YOUR_KEY
+      - _PIP_ADDITIONAL_REQUIREMENTS=psycopg2-binary boto3 pandas s3fs
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./python/scripts:/opt/airflow/python/scripts
+      - ./airflow/logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      bash -c "airflow scheduler"
+    networks:
+      - airflow_net
+
+  spark:
+    build: ./spark
+    container_name: spark
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    command: tail -f /dev/null
+    volumes:
+      - ./spark/src:/opt/bitnami/spark/src
+    networks:
+      - airflow_net
+
+volumes:
+  postgres-db-volume:
+
+networks:
+  airflow_net:
+    driver: bridge
